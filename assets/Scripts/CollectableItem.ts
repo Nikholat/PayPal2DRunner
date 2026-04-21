@@ -1,14 +1,17 @@
 import { _decorator, Component, Collider2D, Contact2DType } from 'cc';
 import { MoneyManager } from './MoneyManager';
+
 const { ccclass, property } = _decorator;
 
 @ccclass('CollectableItem')
 export class CollectableItem extends Component {
     @property
-    value: number = 10; // Сколько дает этот предмет (например, PayPal может давать больше)
+    value: number = 10;
 
     @property(MoneyManager)
     moneyManager: MoneyManager = null!;
+
+    private isCollected: boolean = false;
 
     start() {
         const collider = this.getComponent(Collider2D);
@@ -17,17 +20,25 @@ export class CollectableItem extends Component {
         }
     }
 
-    onCollect(self: Collider2D, other: Collider2D) {
-        // ПРОВЕРКА: Если тот, кто коснулся монеты, НЕ является игроком — игнорируем
-        // Можно проверять по имени ноды или по наличию скрипта PlayerController
-        const isPlayer = other.getComponent('PlayerController');
-
-        if (!isPlayer) {
-            return; // Зэк или другой объект просто пролетают мимо
+    onDestroy() {
+        const collider = this.getComponent(Collider2D);
+        if (collider) {
+            collider.off(Contact2DType.BEGIN_CONTACT, this.onCollect, this);
         }
+    }
+
+    private onCollect(self: Collider2D, other: Collider2D) {
+        if (this.isCollected) return;
+
+        const isPlayer = other.getComponent('PlayerController');
+        if (!isPlayer) return;
+
+        this.isCollected = true;
 
         if (this.moneyManager) {
-            this.moneyManager.addMoney(this.value);
+            this.moneyManager.addMoney(this.value, this.node.worldPosition);
+        } else {
+            console.error('[CollectableItem] moneyManager is null on', this.node.name);
         }
 
         this.node.active = false;
