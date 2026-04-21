@@ -31,13 +31,13 @@ export class MoneyManager extends Component {
     flyPrefab: Prefab = null!; // prefab летящего доллара
 
     @property
-    flyScale: number = 0.2; // размер летящего объекта
+    flyScale: number = 0.2;
 
     @property
-    flyArcHeight: number = 150; // высота дуги
+    flyArcHeight: number = 150;
 
     @property
-    flyDuration: number = 0.7; // скорость полёта: больше = медленнее
+    flyDuration: number = 0.7; // больше = медленнее
 
     public currentAmount: number = 0;
 
@@ -54,6 +54,10 @@ export class MoneyManager extends Component {
         if (worldPos) {
             this.spawnFlyMoney(worldPos);
         }
+    }
+
+    public getCurrentAmount(): number {
+        return this.currentAmount;
     }
 
     private updateMoneyLabel() {

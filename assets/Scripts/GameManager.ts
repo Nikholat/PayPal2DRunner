@@ -1,5 +1,18 @@
-import { _decorator, Component, Node, Vec3, tween, Label, UIOpacity, input, Input, EventTouch, Tween } from 'cc';
+import {
+    _decorator,
+    Component,
+    Node,
+    Vec3,
+    tween,
+    Label,
+    UIOpacity,
+    input,
+    Input,
+    EventTouch,
+    Tween
+} from 'cc';
 import { MoneyManager } from './MoneyManager';
+
 const { ccclass, property } = _decorator;
 
 @ccclass('GameManager')
@@ -48,8 +61,22 @@ export class GameManager extends Component {
         this.setEnginePaused(true);
 
         if (this.startUI) this.startUI.active = true;
-        if (this.failUI) this.failUI.active = false;
-        if (this.resultsUI) this.resultsUI.active = false;
+
+        if (this.failUI) {
+            this.failUI.active = false;
+            this.failUI.setScale(new Vec3(1, 1, 1));
+
+            const failOpacity = this.failUI.getComponent(UIOpacity);
+            if (failOpacity) failOpacity.opacity = 255;
+        }
+
+        if (this.resultsUI) {
+            this.resultsUI.active = false;
+            this.resultsUI.setScale(new Vec3(1, 1, 1));
+
+            const resultsOpacity = this.resultsUI.getComponent(UIOpacity);
+            if (resultsOpacity) resultsOpacity.opacity = 255;
+        }
 
         if (this.darkOverlay) {
             this.darkOverlay.active = true;
@@ -94,7 +121,10 @@ export class GameManager extends Component {
     }
 
     private showGameOverSequence() {
-        if (!this.failUI) return;
+        if (!this.failUI) {
+            this.showResults();
+            return;
+        }
 
         this.failUI.active = true;
         this.failUI.setScale(new Vec3(0, 0, 0));
@@ -106,7 +136,7 @@ export class GameManager extends Component {
             .to(0.3, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' })
             .call(() => this.startFailPulse())
             .delay(2.0)
-            .call(() => this.showResults())
+            .call(() => this.hideFailAndShowResults())
             .start();
     }
 
@@ -122,14 +152,40 @@ export class GameManager extends Component {
         }, 0.3);
     }
 
-    private showResults() {
-        if (this.failUI) {
-            Tween.stopAllByTarget(this.failUI);
-            this.failUI.active = false;
+    private hideFailAndShowResults() {
+        if (!this.failUI) {
+            this.showResults();
+            return;
         }
 
+        Tween.stopAllByTarget(this.failUI);
+
+        const failOpacity = this.failUI.getComponent(UIOpacity);
+
+        if (!failOpacity) {
+            this.failUI.active = false;
+            this.showResults();
+            return;
+        }
+
+        tween(failOpacity)
+            .to(0.25, { opacity: 0 })
+            .start();
+
+        tween(this.failUI)
+            .to(0.25, { scale: new Vec3(0.85, 0.85, 1) }, { easing: 'quadIn' })
+            .call(() => {
+                this.failUI.active = false;
+                this.failUI.setScale(new Vec3(1, 1, 1));
+                failOpacity.opacity = 255;
+                this.showResults();
+            })
+            .start();
+    }
+
+    private showResults() {
         if (this.moneyManager && this.finalMoneyLabel) {
-            const amount = (this.moneyManager as any).currentAmount ?? 0;
+            const amount = this.moneyManager.getCurrentAmount();
             this.finalMoneyLabel.string = `$${amount}.00`;
         }
 
@@ -145,7 +201,9 @@ export class GameManager extends Component {
             .to(0.4, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' })
             .call(() => {
                 if (uiOpacity) {
-                    tween(uiOpacity).to(0.3, { opacity: 255 }).start();
+                    tween(uiOpacity)
+                        .to(0.3, { opacity: 255 })
+                        .start();
                 }
             })
             .start();
