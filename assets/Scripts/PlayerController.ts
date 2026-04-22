@@ -15,6 +15,7 @@ import { GameManager } from './GameManager';
 import { CollectableItem } from './CollectableItem';
 import { Obstacle } from './Obstacle';
 import { ConeObstacle } from './ConeObstacle';
+import { AudioManager } from './AudioManager';
 
 const { ccclass, property } = _decorator;
 
@@ -25,6 +26,9 @@ export class PlayerController extends Component {
 
     @property(GameManager)
     gameManager: GameManager = null!;
+
+    @property(AudioManager)
+    audioManager: AudioManager = null!;
 
     @property
     jumpForce: number = 15;
@@ -39,6 +43,7 @@ export class PlayerController extends Component {
     private isGrounded: boolean = true;
     private isDead: boolean = false;
     private isInvulnerable: boolean = false;
+    private canJump: boolean = false;
 
     start() {
         input.on(Input.EventType.TOUCH_START, this.jump, this);
@@ -58,7 +63,13 @@ export class PlayerController extends Component {
         }
     }
 
+    public setJumpEnabled(enabled: boolean) {
+        this.canJump = enabled;
+    }
+
     jump() {
+
+        if (!this.canJump) return;
         if (this.isGrounded && !this.isDead) {
             this.velocityY = this.jumpForce;
             this.isGrounded = false;
@@ -67,6 +78,10 @@ export class PlayerController extends Component {
                 .to(0.1, { scale: new Vec3(0.8, 1.2, 1) })
                 .to(0.1, { scale: new Vec3(1, 1, 1) })
                 .start();
+
+            if (this.audioManager) {
+                this.audioManager.playJump();
+            }
         }
     }
 
@@ -76,13 +91,11 @@ export class PlayerController extends Component {
         const obstacle = other.getComponent(Obstacle);
         const coneObstacle = other.getComponent(ConeObstacle);
 
-        // 1. Любое препятствие наносит урон
         if ((obstacle || coneObstacle) && !this.isInvulnerable) {
             this.handleHit();
             return;
         }
 
-        // 2. Сбор денег
         const collectable = other.getComponent(CollectableItem);
         if (collectable) {
             collectable.onCollect(other, self);
@@ -93,6 +106,10 @@ export class PlayerController extends Component {
         if (this.isDead) return;
 
         const stillAlive = this.healthManager.takeDamage();
+
+        if (this.audioManager) {
+            this.audioManager.playHit();
+        }
 
         if (!stillAlive) {
             this.die();

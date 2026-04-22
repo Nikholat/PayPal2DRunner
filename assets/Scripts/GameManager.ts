@@ -13,6 +13,8 @@ import {
 } from 'cc';
 import { MoneyManager } from './MoneyManager';
 import { ConfettiController } from './ConfettiController';
+import { PlayerController } from './PlayerController';
+import { AudioManager } from './AudioManager';
 
 const { ccclass, property } = _decorator;
 
@@ -21,11 +23,17 @@ export class GameManager extends Component {
     @property(Node)
     levelContent: Node = null!;
 
+    @property(AudioManager)
+    audioManager: AudioManager = null!;
+
     @property(Node)
     player: Node = null!;
 
     @property(Node)
     finishNode: Node = null!;
+
+    @property(Node)
+    jumpTutorialPoint: Node = null!;
 
     @property(MoneyManager)
     moneyManager: MoneyManager = null!;
@@ -35,6 +43,9 @@ export class GameManager extends Component {
 
     @property(Node)
     startUI: Node = null!;
+
+    @property(Node)
+    jumpTutorialUI: Node = null!;
 
     @property(Node)
     failUI: Node = null!;
@@ -50,8 +61,11 @@ export class GameManager extends Component {
 
     private isStarted: boolean = false;
     private isGameOver: boolean = false;
+    private jumpTutorialShown: boolean = false;
+    private waitingForJumpTutorialTap: boolean = false;
 
     private readonly finishTriggerDistance: number = 80;
+    private readonly tutorialTriggerDistance: number = 80;
 
     onLoad() {
         input.on(Input.EventType.TOUCH_START, this.onFirstTouch, this);
@@ -62,9 +76,15 @@ export class GameManager extends Component {
     }
 
     start() {
-        this.setEnginePaused(true);
+        this.pauseAllGameplay();
+
+        const playerComp = this.player?.getComponent(PlayerController);
+        if (playerComp) {
+            playerComp.setJumpEnabled(false);
+        }
 
         if (this.startUI) this.startUI.active = true;
+        if (this.jumpTutorialUI) this.jumpTutorialUI.active = false;
 
         if (this.failUI) {
             this.failUI.active = false;
@@ -91,6 +111,17 @@ export class GameManager extends Component {
 
     update() {
         if (!this.isStarted || this.isGameOver) return;
+
+        if (!this.jumpTutorialShown && this.player && this.jumpTutorialPoint) {
+            const playerX = this.player.worldPosition.x;
+            const tutorialX = this.jumpTutorialPoint.worldPosition.x;
+
+            if (tutorialX <= playerX + this.tutorialTriggerDistance) {
+                this.pauseForJumpTutorial();
+                return;
+            }
+        }
+
         if (!this.player || !this.finishNode) return;
 
         const playerX = this.player.worldPosition.x;
@@ -102,26 +133,65 @@ export class GameManager extends Component {
     }
 
     private onFirstTouch(event: EventTouch) {
-        if (this.isStarted || this.isGameOver) return;
+        if (this.isGameOver) return;
 
-        this.isStarted = true;
+        // Первый тап: стартует мир, но враги ещё стоят
+        if (!this.isStarted) {
+            this.isStarted = true;
 
-        if (this.startUI) {
-            this.startUI.active = false;
+            if (this.startUI) {
+                this.startUI.active = false;
+            }
+
+            this.resumeIntroRun();
+            return;
         }
 
-        this.setEnginePaused(false);
+        // Второй тап: после туториала включаем прыжок и врагов
+        if (this.waitingForJumpTutorialTap) {
+            this.waitingForJumpTutorialTap = false;
 
-        input.off(Input.EventType.TOUCH_START, this.onFirstTouch, this);
+            if (this.jumpTutorialUI) {
+                this.jumpTutorialUI.active = false;
+            }
+
+            const playerComp = this.player?.getComponent(PlayerController);
+            if (playerComp) {
+                playerComp.setJumpEnabled(true);
+            }
+
+            this.resumeFullGameplay();
+        }
+    }
+
+    private pauseForJumpTutorial() {
+        if (this.jumpTutorialShown || this.waitingForJumpTutorialTap) return;
+
+        this.jumpTutorialShown = true;
+        this.waitingForJumpTutorialTap = true;
+
+        this.pauseAllGameplay();
+
+        if (this.jumpTutorialUI) {
+            this.jumpTutorialUI.active = true;
+        }
     }
 
     public gameOver() {
         if (this.isGameOver) return;
         this.isGameOver = true;
 
-        this.setEnginePaused(true);
+        this.pauseAllGameplay();
         this.showDarkOverlay();
         this.showGameOverSequence();
+
+        if (this.audioManager) {
+            this.audioManager.stopMusic();
+        }
+
+        if (this.audioManager) {
+            this.audioManager.playFail();
+        }
     }
 
     private showGameOverSequence() {
@@ -148,7 +218,7 @@ export class GameManager extends Component {
         if (this.isGameOver) return;
         this.isGameOver = true;
 
-        this.setEnginePaused(true);
+        this.pauseAllGameplay();
         this.showDarkOverlay();
 
         if (this.confettiController) {
@@ -158,6 +228,10 @@ export class GameManager extends Component {
         this.scheduleOnce(() => {
             this.showResults();
         }, 0.3);
+
+        if (this.audioManager) {
+            this.audioManager.playWin();
+        }
     }
 
     private hideFailAndShowResults() {
@@ -244,16 +318,43 @@ export class GameManager extends Component {
             .start();
     }
 
-    private setEnginePaused(paused: boolean) {
+    // ---------- FLOW CONTROL ----------
+
+    // Полная пауза: всё стоит
+    private pauseAllGameplay() {
+        this.setRoadPaused(true);
+        this.setPlayerPaused(true);
+        this.setObstaclesPaused(true);
+    }
+
+    // После первого тапа: дорога и игрок работают, враги ещё стоят
+    private resumeIntroRun() {
+        this.setRoadPaused(false);
+        this.setPlayerPaused(false);
+        this.setObstaclesPaused(true);
+    }
+
+    // После второго тапа: включаем всё
+    private resumeFullGameplay() {
+        this.setRoadPaused(false);
+        this.setPlayerPaused(false);
+        this.setObstaclesPaused(false);
+    }
+
+    private setRoadPaused(paused: boolean) {
         const road = this.levelContent.getComponent('RoadController') as any;
         if (road) road.enabled = !paused;
+    }
 
+    private setPlayerPaused(paused: boolean) {
         const playerComp = this.player.getComponent('PlayerController') as any;
         if (playerComp) playerComp.enabled = !paused;
 
         const playerAnim = this.player.getComponent('SimpleSpriteAnim') as any;
         if (playerAnim) playerAnim.enabled = !paused;
+    }
 
+    private setObstaclesPaused(paused: boolean) {
         const obstacles = this.levelContent.getComponentsInChildren('Obstacle');
         obstacles.forEach(obs => (obs as any).enabled = !paused);
 

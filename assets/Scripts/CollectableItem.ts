@@ -1,10 +1,15 @@
 import { _decorator, Component, Collider2D, Contact2DType } from 'cc';
 import { MoneyManager } from './MoneyManager';
+import { AudioManager } from './AudioManager';
 
 const { ccclass, property } = _decorator;
 
 @ccclass('CollectableItem')
 export class CollectableItem extends Component {
+
+    @property(AudioManager)
+    audioManager: AudioManager = null!;
+
     @property
     value: number = 10;
 
@@ -41,6 +46,9 @@ export class CollectableItem extends Component {
             console.error('[CollectableItem] moneyManager is null on', this.node.name);
         }
 
+        if (this.audioManager) {
+            this.audioManager.playCollect();
+        }
         this.node.active = false;
     }
 }
