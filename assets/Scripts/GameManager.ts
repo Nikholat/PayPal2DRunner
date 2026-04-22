@@ -12,6 +12,7 @@ import {
     Tween
 } from 'cc';
 import { MoneyManager } from './MoneyManager';
+import { ConfettiController } from './ConfettiController';
 
 const { ccclass, property } = _decorator;
 
@@ -28,6 +29,9 @@ export class GameManager extends Component {
 
     @property(MoneyManager)
     moneyManager: MoneyManager = null!;
+
+    @property(ConfettiController)
+    confettiController: ConfettiController = null!;
 
     @property(Node)
     startUI: Node = null!;
@@ -146,6 +150,10 @@ export class GameManager extends Component {
 
         this.setEnginePaused(true);
         this.showDarkOverlay();
+
+        if (this.confettiController) {
+            this.confettiController.play();
+        }
 
         this.scheduleOnce(() => {
             this.showResults();
