@@ -256,5 +256,8 @@ export class GameManager extends Component {
 
         const obstacles = this.levelContent.getComponentsInChildren('Obstacle');
         obstacles.forEach(obs => (obs as any).enabled = !paused);
+
+        const coneObstacles = this.levelContent.getComponentsInChildren('ConeObstacle');
+        coneObstacles.forEach(obs => (obs as any).enabled = !paused);
     }
 }

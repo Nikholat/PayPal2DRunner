@@ -1,8 +1,20 @@
-import { _decorator, Component, input, Input, Vec3, Collider2D, Contact2DType, IPhysics2DContact, tween, UIOpacity } from 'cc';
+import {
+    _decorator,
+    Component,
+    input,
+    Input,
+    Vec3,
+    Collider2D,
+    Contact2DType,
+    IPhysics2DContact,
+    tween,
+    UIOpacity
+} from 'cc';
 import { HealthManager } from './HealthManager';
+import { GameManager } from './GameManager';
+import { CollectableItem } from './CollectableItem';
 import { Obstacle } from './Obstacle';
-import { GameManager } from './GameManager'; // ДОБАВЛЕНО: Импорт менеджера игры
-import { CollectableItem } from './CollectableItem'; // ДОБАВЛЕНО: Импорт для сбора денег
+import { ConeObstacle } from './ConeObstacle';
 
 const { ccclass, property } = _decorator;
 
@@ -12,7 +24,7 @@ export class PlayerController extends Component {
     healthManager: HealthManager = null!;
 
     @property(GameManager)
-    gameManager: GameManager = null!; // ДОБАВЛЕНО: Ссылка на менеджер
+    gameManager: GameManager = null!;
 
     @property
     jumpForce: number = 15;
@@ -37,8 +49,16 @@ export class PlayerController extends Component {
         }
     }
 
+    onDestroy() {
+        input.off(Input.EventType.TOUCH_START, this.jump, this);
+
+        const collider = this.getComponent(Collider2D);
+        if (collider) {
+            collider.off(Contact2DType.BEGIN_CONTACT, this.onBeginContact, this);
+        }
+    }
+
     jump() {
-        // Прыгаем только если на земле, не мертвы и игра не на паузе
         if (this.isGrounded && !this.isDead) {
             this.velocityY = this.jumpForce;
             this.isGrounded = false;
@@ -51,22 +71,28 @@ export class PlayerController extends Component {
     }
 
     onBeginContact(self: Collider2D, other: Collider2D, contact: IPhysics2DContact | null) {
-        // 1. Столкновение с зэком
-        if (other.getComponent(Obstacle) && !this.isInvulnerable) {
+        if (this.isDead) return;
+
+        const obstacle = other.getComponent(Obstacle);
+        const coneObstacle = other.getComponent(ConeObstacle);
+
+        // 1. Любое препятствие наносит урон
+        if ((obstacle || coneObstacle) && !this.isInvulnerable) {
             this.handleHit();
+            return;
         }
 
         // 2. Сбор денег
         const collectable = other.getComponent(CollectableItem);
         if (collectable) {
-            collectable.onCollect(other, self); // Вызываем логику сбора
+            collectable.onCollect(other, self);
         }
     }
 
     handleHit() {
         if (this.isDead) return;
 
-        const stillAlive = this.healthManager.takeDamage(); 
+        const stillAlive = this.healthManager.takeDamage();
 
         if (!stillAlive) {
             this.die();
@@ -94,13 +120,14 @@ export class PlayerController extends Component {
         if (this.isDead) return;
 
         this.velocityY -= this.gravity * dt;
-        let pos = this.node.position;
+        const pos = this.node.position;
         let nextY = pos.y + this.velocityY;
 
         if (nextY <= this.groundY) {
             if (!this.isGrounded) {
                 this.onLanded();
             }
+
             nextY = this.groundY;
             this.velocityY = 0;
             this.isGrounded = true;
@@ -119,10 +146,9 @@ export class PlayerController extends Component {
     die() {
         if (this.isDead) return;
         this.isDead = true;
-        
+
         input.off(Input.EventType.TOUCH_START, this.jump, this);
-        
-        // Вызываем глобальный Game Over
+
         if (this.gameManager) {
             this.gameManager.gameOver();
         }
