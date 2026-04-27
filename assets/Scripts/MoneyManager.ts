@@ -10,6 +10,7 @@ import {
     Prefab,
     Tween
 } from 'cc';
+import { PraiseTextController } from './PraiseTextController';
 
 const { ccclass, property } = _decorator;
 
@@ -19,16 +20,19 @@ export class MoneyManager extends Component {
     moneyLabel: Label = null!;
 
     @property(Node)
-    visualContainer: Node = null!; // вся плашка с PayPal
+    visualContainer: Node = null!;
 
     @property(Node)
-    flyTarget: Node = null!; // пустышка возле текста денег
+    flyTarget: Node = null!;
 
     @property(Node)
-    flyLayer: Node = null!; // полноэкранный UI-слой для летящих эффектов
+    flyLayer: Node = null!;
 
     @property(Prefab)
-    flyPrefab: Prefab = null!; // prefab летящего доллара
+    flyPrefab: Prefab = null!;
+
+    @property(PraiseTextController)
+    praiseTextController: PraiseTextController = null!;
 
     @property
     flyScale: number = 0.2;
@@ -37,7 +41,7 @@ export class MoneyManager extends Component {
     flyArcHeight: number = 150;
 
     @property
-    flyDuration: number = 0.7; // больше = медленнее
+    flyDuration: number = 0.7;
 
     public currentAmount: number = 0;
 
@@ -50,6 +54,10 @@ export class MoneyManager extends Component {
 
         this.updateMoneyLabel();
         this.playBounceAnimation();
+
+        if (this.praiseTextController) {
+            this.praiseTextController.tryShowRandomPraise();
+        }
 
         if (worldPos) {
             this.spawnFlyMoney(worldPos);
@@ -82,9 +90,7 @@ export class MoneyManager extends Component {
     }
 
     private spawnFlyMoney(worldPos: Vec3) {
-        if (!this.flyPrefab || !this.flyTarget || !this.flyLayer) {
-            return;
-        }
+        if (!this.flyPrefab || !this.flyTarget || !this.flyLayer) return;
 
         const layerTransform = this.flyLayer.getComponent(UITransform);
         if (!layerTransform) {

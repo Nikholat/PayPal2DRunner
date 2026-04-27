@@ -21,55 +21,36 @@ const { ccclass, property } = _decorator;
 
 @ccclass('GameManager')
 export class GameManager extends Component {
-    @property(Node)
-    levelContent: Node = null!;
+    @property(Node) levelContent: Node = null!;
+    @property(AudioManager) audioManager: AudioManager = null!;
+    @property(Node) player: Node = null!;
+    @property(Node) finishNode: Node = null!;
+    @property(FinishRopeBreak) finishRopeBreak: FinishRopeBreak = null!;
+    @property(Node) jumpTutorialPoint: Node = null!;
+    @property(MoneyManager) moneyManager: MoneyManager = null!;
+    @property(ConfettiController) confettiController: ConfettiController = null!;
 
-    @property(AudioManager)
-    audioManager: AudioManager = null!;
+    @property(Node) startUI: Node = null!;
+    @property(Node) startTextUI: Node = null!;
+    @property(Node) jumpTutorialUI: Node = null!;
+    @property(Node) failUI: Node = null!;
+    @property(Node) loseResultsUI: Node = null!;
+    @property(Node) winResultsUI: Node = null!;
+    @property(Node) darkOverlay: Node = null!;
 
-    @property(Node)
-    player: Node = null!;
+    @property(Label) loseMoneyLabel: Label = null!;
+    @property(Label) winMoneyLabel: Label = null!;
 
-    @property(Node)
-    finishNode: Node = null!;
+    @property
+    moneyCountDuration: number = 1.0;
 
-    @property(FinishRopeBreak)
-    finishRopeBreak: FinishRopeBreak = null!;
+    private isStarted = false;
+    private isGameOver = false;
+    private jumpTutorialShown = false;
+    private waitingForJumpTutorialTap = false;
 
-    @property(Node)
-    jumpTutorialPoint: Node = null!;
-
-    @property(MoneyManager)
-    moneyManager: MoneyManager = null!;
-
-    @property(ConfettiController)
-    confettiController: ConfettiController = null!;
-
-    @property(Node)
-    startUI: Node = null!;
-
-    @property(Node)
-    jumpTutorialUI: Node = null!;
-
-    @property(Node)
-    failUI: Node = null!;
-
-    @property(Node)
-    resultsUI: Node = null!;
-
-    @property(Node)
-    darkOverlay: Node = null!;
-
-    @property(Label)
-    finalMoneyLabel: Label = null!;
-
-    private isStarted: boolean = false;
-    private isGameOver: boolean = false;
-    private jumpTutorialShown: boolean = false;
-    private waitingForJumpTutorialTap: boolean = false;
-
-    private readonly finishTriggerDistance: number = 80;
-    private readonly tutorialTriggerDistance: number = 80;
+    private readonly finishTriggerDistance = 80;
+    private readonly tutorialTriggerDistance = 80;
 
     onLoad() {
         input.on(Input.EventType.TOUCH_START, this.onFirstTouch, this);
@@ -83,34 +64,13 @@ export class GameManager extends Component {
         this.pauseAllGameplay();
 
         const playerComp = this.player?.getComponent(PlayerController);
-        if (playerComp) {
-            playerComp.setJumpEnabled(false);
-        }
+        if (playerComp) playerComp.setJumpEnabled(false);
 
         if (this.startUI) this.startUI.active = true;
+        if (this.startTextUI) this.startTextUI.active = true;
         if (this.jumpTutorialUI) this.jumpTutorialUI.active = false;
 
-        if (this.failUI) {
-            this.failUI.active = false;
-            this.failUI.setScale(new Vec3(1, 1, 1));
-
-            const failOpacity = this.failUI.getComponent(UIOpacity);
-            if (failOpacity) failOpacity.opacity = 255;
-        }
-
-        if (this.resultsUI) {
-            this.resultsUI.active = false;
-            this.resultsUI.setScale(new Vec3(1, 1, 1));
-
-            const resultsOpacity = this.resultsUI.getComponent(UIOpacity);
-            if (resultsOpacity) resultsOpacity.opacity = 255;
-        }
-
-        if (this.darkOverlay) {
-            this.darkOverlay.active = true;
-            const overlayOpacity = this.darkOverlay.getComponent(UIOpacity);
-            if (overlayOpacity) overlayOpacity.opacity = 0;
-        }
+        this.resetEndUI();
     }
 
     update() {
@@ -142,13 +102,10 @@ export class GameManager extends Component {
         if (!this.isStarted) {
             this.isStarted = true;
 
-            if (this.startUI) {
-                this.startUI.active = false;
-            }
+            if (this.startUI) this.startUI.active = false;
+            if (this.startTextUI) this.startTextUI.active = false;
 
-            if (this.audioManager) {
-                this.audioManager.playMusic();
-            }
+            if (this.audioManager) this.audioManager.playMusic();
 
             this.resumeIntroRun();
             return;
@@ -157,14 +114,10 @@ export class GameManager extends Component {
         if (this.waitingForJumpTutorialTap) {
             this.waitingForJumpTutorialTap = false;
 
-            if (this.jumpTutorialUI) {
-                this.jumpTutorialUI.active = false;
-            }
+            if (this.jumpTutorialUI) this.jumpTutorialUI.active = false;
 
             const playerComp = this.player?.getComponent(PlayerController);
-            if (playerComp) {
-                playerComp.setJumpEnabled(true);
-            }
+            if (playerComp) playerComp.setJumpEnabled(true);
 
             this.resumeFullGameplay();
         }
@@ -178,9 +131,7 @@ export class GameManager extends Component {
 
         this.pauseAllGameplay();
 
-        if (this.jumpTutorialUI) {
-            this.jumpTutorialUI.active = true;
-        }
+        if (this.jumpTutorialUI) this.jumpTutorialUI.active = true;
     }
 
     public gameOver() {
@@ -197,9 +148,29 @@ export class GameManager extends Component {
         }
     }
 
+    public win() {
+        if (this.isGameOver) return;
+        this.isGameOver = true;
+
+        this.pauseAllGameplay();
+        this.showDarkOverlay();
+
+        if (this.audioManager) {
+            this.audioManager.stopMusic();
+            this.audioManager.playWin();
+        }
+
+        if (this.finishRopeBreak) this.finishRopeBreak.breakRope();
+        if (this.confettiController) this.confettiController.play();
+
+        this.scheduleOnce(() => {
+            this.showWinResults();
+        }, 0.3);
+    }
+
     private showGameOverSequence() {
         if (!this.failUI) {
-            this.showResults();
+            this.showLoseResults();
             return;
         }
 
@@ -213,38 +184,13 @@ export class GameManager extends Component {
             .to(0.3, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' })
             .call(() => this.startFailPulse())
             .delay(2.0)
-            .call(() => this.hideFailAndShowResults())
+            .call(() => this.hideFailAndShowLoseResults())
             .start();
     }
 
-    public win() {
-        if (this.isGameOver) return;
-        this.isGameOver = true;
-
-        this.pauseAllGameplay();
-        this.showDarkOverlay();
-
-        if (this.audioManager) {
-            this.audioManager.stopMusic();
-            this.audioManager.playWin();
-        }
-
-        if (this.finishRopeBreak) {
-            this.finishRopeBreak.breakRope();
-        }
-
-        if (this.confettiController) {
-            this.confettiController.play();
-        }
-
-        this.scheduleOnce(() => {
-            this.showResults();
-        }, 0.3);
-    }
-
-    private hideFailAndShowResults() {
+    private hideFailAndShowLoseResults() {
         if (!this.failUI) {
-            this.showResults();
+            this.showLoseResults();
             return;
         }
 
@@ -254,13 +200,11 @@ export class GameManager extends Component {
 
         if (!failOpacity) {
             this.failUI.active = false;
-            this.showResults();
+            this.showLoseResults();
             return;
         }
 
-        tween(failOpacity)
-            .to(0.25, { opacity: 0 })
-            .start();
+        tween(failOpacity).to(0.25, { opacity: 0 }).start();
 
         tween(this.failUI)
             .to(0.25, { scale: new Vec3(0.85, 0.85, 1) }, { easing: 'quadIn' })
@@ -268,35 +212,85 @@ export class GameManager extends Component {
                 this.failUI.active = false;
                 this.failUI.setScale(new Vec3(1, 1, 1));
                 failOpacity.opacity = 255;
-                this.showResults();
+                this.showLoseResults();
             })
             .start();
     }
 
-    private showResults() {
-        if (this.moneyManager && this.finalMoneyLabel) {
-            const amount = this.moneyManager.getCurrentAmount();
-            this.finalMoneyLabel.string = `$${amount}.00`;
+    private showLoseResults() {
+        const amount = this.getFinalAmount();
+
+        if (this.loseMoneyLabel) {
+            this.loseMoneyLabel.string = '$0.00';
         }
 
-        if (!this.resultsUI) return;
+        this.showPopup(this.loseResultsUI, () => {
+            this.animateMoneyLabel(this.loseMoneyLabel, amount);
+        });
+    }
 
-        this.resultsUI.active = true;
-        this.resultsUI.setScale(new Vec3(0, 0, 0));
+    private showWinResults() {
+        const amount = this.getFinalAmount();
 
-        const uiOpacity = this.resultsUI.getComponent(UIOpacity);
+        if (this.winMoneyLabel) {
+            this.winMoneyLabel.string = '$0.00';
+        }
+
+        this.showPopup(this.winResultsUI, () => {
+            this.animateMoneyLabel(this.winMoneyLabel, amount);
+        });
+    }
+
+    private showPopup(target: Node | null, onShown?: () => void) {
+        if (!target) return;
+
+        target.active = true;
+        target.setScale(new Vec3(0, 0, 0));
+
+        const uiOpacity = target.getComponent(UIOpacity);
         if (uiOpacity) uiOpacity.opacity = 0;
 
-        tween(this.resultsUI)
+        tween(target)
             .to(0.4, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' })
             .call(() => {
                 if (uiOpacity) {
                     tween(uiOpacity)
                         .to(0.3, { opacity: 255 })
+                        .call(() => {
+                            if (onShown) onShown();
+                        })
                         .start();
+                } else {
+                    if (onShown) onShown();
                 }
             })
             .start();
+    }
+
+    private animateMoneyLabel(label: Label | null, targetAmount: number) {
+        if (!label) return;
+
+        Tween.stopAllByTarget(label);
+
+        const counter = { value: 0 };
+
+        tween(counter)
+            .to(this.moneyCountDuration, { value: targetAmount }, {
+                easing: 'quadOut',
+                onUpdate: () => {
+                    const value = Math.floor(counter.value);
+                    label.string = `$${value}.00`;
+                }
+            })
+            .call(() => {
+                label.string = `$${targetAmount}.00`;
+            })
+            .start();
+    }
+
+    private getFinalAmount(): number {
+        if (!this.moneyManager) return 0;
+        return this.moneyManager.getCurrentAmount();
     }
 
     private showDarkOverlay() {
@@ -308,10 +302,7 @@ export class GameManager extends Component {
         if (!overlayOpacity) return;
 
         overlayOpacity.opacity = 0;
-
-        tween(overlayOpacity)
-            .to(0.3, { opacity: 150 })
-            .start();
+        tween(overlayOpacity).to(0.3, { opacity: 150 }).start();
     }
 
     private startFailPulse() {
@@ -324,6 +315,38 @@ export class GameManager extends Component {
                     .to(0.6, { scale: new Vec3(1, 1, 1) }, { easing: 'quadInOut' })
             )
             .start();
+    }
+
+    private resetEndUI() {
+        if (this.failUI) {
+            this.failUI.active = false;
+            this.failUI.setScale(new Vec3(1, 1, 1));
+            const failOpacity = this.failUI.getComponent(UIOpacity);
+            if (failOpacity) failOpacity.opacity = 255;
+        }
+
+        if (this.loseResultsUI) {
+            this.loseResultsUI.active = false;
+            this.loseResultsUI.setScale(new Vec3(1, 1, 1));
+            const opacity = this.loseResultsUI.getComponent(UIOpacity);
+            if (opacity) opacity.opacity = 255;
+        }
+
+        if (this.winResultsUI) {
+            this.winResultsUI.active = false;
+            this.winResultsUI.setScale(new Vec3(1, 1, 1));
+            const opacity = this.winResultsUI.getComponent(UIOpacity);
+            if (opacity) opacity.opacity = 255;
+        }
+
+        if (this.loseMoneyLabel) this.loseMoneyLabel.string = '$0.00';
+        if (this.winMoneyLabel) this.winMoneyLabel.string = '$0.00';
+
+        if (this.darkOverlay) {
+            this.darkOverlay.active = true;
+            const overlayOpacity = this.darkOverlay.getComponent(UIOpacity);
+            if (overlayOpacity) overlayOpacity.opacity = 0;
+        }
     }
 
     private pauseAllGameplay() {
