@@ -15,6 +15,7 @@ import { MoneyManager } from './MoneyManager';
 import { ConfettiController } from './ConfettiController';
 import { PlayerController } from './PlayerController';
 import { AudioManager } from './AudioManager';
+import { FinishRopeBreak } from './FinishRopeBreak';
 
 const { ccclass, property } = _decorator;
 
@@ -31,6 +32,9 @@ export class GameManager extends Component {
 
     @property(Node)
     finishNode: Node = null!;
+
+    @property(FinishRopeBreak)
+    finishRopeBreak: FinishRopeBreak = null!;
 
     @property(Node)
     jumpTutorialPoint: Node = null!;
@@ -135,7 +139,6 @@ export class GameManager extends Component {
     private onFirstTouch(event: EventTouch) {
         if (this.isGameOver) return;
 
-        // Первый тап: стартует мир, но враги ещё стоят
         if (!this.isStarted) {
             this.isStarted = true;
 
@@ -143,11 +146,14 @@ export class GameManager extends Component {
                 this.startUI.active = false;
             }
 
+            if (this.audioManager) {
+                this.audioManager.playMusic();
+            }
+
             this.resumeIntroRun();
             return;
         }
 
-        // Второй тап: после туториала включаем прыжок и врагов
         if (this.waitingForJumpTutorialTap) {
             this.waitingForJumpTutorialTap = false;
 
@@ -187,9 +193,6 @@ export class GameManager extends Component {
 
         if (this.audioManager) {
             this.audioManager.stopMusic();
-        }
-
-        if (this.audioManager) {
             this.audioManager.playFail();
         }
     }
@@ -221,6 +224,15 @@ export class GameManager extends Component {
         this.pauseAllGameplay();
         this.showDarkOverlay();
 
+        if (this.audioManager) {
+            this.audioManager.stopMusic();
+            this.audioManager.playWin();
+        }
+
+        if (this.finishRopeBreak) {
+            this.finishRopeBreak.breakRope();
+        }
+
         if (this.confettiController) {
             this.confettiController.play();
         }
@@ -228,10 +240,6 @@ export class GameManager extends Component {
         this.scheduleOnce(() => {
             this.showResults();
         }, 0.3);
-
-        if (this.audioManager) {
-            this.audioManager.playWin();
-        }
     }
 
     private hideFailAndShowResults() {
@@ -318,23 +326,18 @@ export class GameManager extends Component {
             .start();
     }
 
-    // ---------- FLOW CONTROL ----------
-
-    // Полная пауза: всё стоит
     private pauseAllGameplay() {
         this.setRoadPaused(true);
         this.setPlayerPaused(true);
         this.setObstaclesPaused(true);
     }
 
-    // После первого тапа: дорога и игрок работают, враги ещё стоят
     private resumeIntroRun() {
         this.setRoadPaused(false);
         this.setPlayerPaused(false);
         this.setObstaclesPaused(true);
     }
 
-    // После второго тапа: включаем всё
     private resumeFullGameplay() {
         this.setRoadPaused(false);
         this.setPlayerPaused(false);
