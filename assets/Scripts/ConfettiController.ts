@@ -10,7 +10,8 @@ import {
     tween,
     UITransform,
     randomRange,
-    randomRangeInt
+    randomRangeInt,
+    Tween
 } from 'cc';
 
 const { ccclass, property } = _decorator;
@@ -30,31 +31,55 @@ export class ConfettiController extends Component {
     rightSpawn: Node = null!;
 
     @property
-    piecesPerBurst: number = 20;
+    piecesPerBurst: number = 14;
 
     @property
-    burstCount: number = 4;
+    burstCount: number = 3;
 
     @property
     burstInterval: number = 0.18;
 
     @property
-    minScale: number = 0.6;
+    minScale: number = 0.45;
 
     @property
-    maxScale: number = 1.2;
+    maxScale: number = 0.9;
+
+    @property({
+        tooltip: 'Horizontal travel as percent of layer width'
+    })
+    minTravelXRatio: number = 0.25;
+
+    @property({
+        tooltip: 'Horizontal travel as percent of layer width'
+    })
+    maxTravelXRatio: number = 0.55;
+
+    @property({
+        tooltip: 'Up travel as percent of layer height'
+    })
+    minTravelYRatio: number = 0.35;
+
+    @property({
+        tooltip: 'Up travel as percent of layer height'
+    })
+    maxTravelYRatio: number = 0.75;
+
+    @property({
+        tooltip: 'Fall distance as percent of layer height'
+    })
+    minFallYRatio: number = 0.45;
+
+    @property({
+        tooltip: 'Fall distance as percent of layer height'
+    })
+    maxFallYRatio: number = 0.85;
 
     @property
-    minTravelX: number = 180;
+    spawnRandomOffset: number = 30;
 
     @property
-    maxTravelX: number = 380;
-
-    @property
-    minTravelY: number = 350;
-
-    @property
-    maxTravelY: number = 700;
+    fallRandomX: number = 80;
 
     @property
     minDuration: number = 0.9;
@@ -69,9 +94,16 @@ export class ConfettiController extends Component {
     maxRotation: number = 720;
 
     private isPlaying: boolean = false;
+    private layerTransform: UITransform | null = null;
+
+    onLoad() {
+        this.layerTransform = this.getComponent(UITransform);
+    }
 
     public play(): void {
         if (this.isPlaying) return;
+        if (!this.confettiPrefab || this.confettiFrames.length === 0) return;
+
         this.isPlaying = true;
 
         for (let i = 0; i < this.burstCount; i++) {
@@ -82,7 +114,7 @@ export class ConfettiController extends Component {
                 if (i === this.burstCount - 1) {
                     this.scheduleOnce(() => {
                         this.isPlaying = false;
-                    }, this.maxDuration);
+                    }, this.maxDuration * 2);
                 }
             }, i * this.burstInterval);
         }
@@ -91,6 +123,19 @@ export class ConfettiController extends Component {
     private spawnBurst(isLeft: boolean): void {
         const spawnNode = isLeft ? this.leftSpawn : this.rightSpawn;
         if (!spawnNode || !this.confettiPrefab || this.confettiFrames.length === 0) return;
+
+        const layerSize = this.getLayerSize();
+        const width = layerSize.x;
+        const height = layerSize.y;
+
+        const minTravelX = width * this.minTravelXRatio;
+        const maxTravelX = width * this.maxTravelXRatio;
+
+        const minTravelY = height * this.minTravelYRatio;
+        const maxTravelY = height * this.maxTravelYRatio;
+
+        const minFallY = height * this.minFallYRatio;
+        const maxFallY = height * this.maxFallYRatio;
 
         for (let i = 0; i < this.piecesPerBurst; i++) {
             const piece = instantiate(this.confettiPrefab);
@@ -101,10 +146,10 @@ export class ConfettiController extends Component {
                 sprite.spriteFrame = this.confettiFrames[randomRangeInt(0, this.confettiFrames.length)];
             }
 
-            const start = spawnNode.position.clone();
+            const start = this.getLocalPositionInLayer(spawnNode);
 
-            start.x += randomRange(-30, 30);
-            start.y += randomRange(-30, 30);
+            start.x += randomRange(-this.spawnRandomOffset, this.spawnRandomOffset);
+            start.y += randomRange(-this.spawnRandomOffset, this.spawnRandomOffset);
 
             piece.setPosition(start);
 
@@ -112,30 +157,39 @@ export class ConfettiController extends Component {
             piece.setScale(new Vec3(scale, scale, 1));
 
             const dirX = isLeft ? 1 : -1;
-            const endPos = new Vec3(
-                start.x + dirX * randomRange(this.minTravelX, this.maxTravelX),
-                start.y + randomRange(this.minTravelY, this.maxTravelY),
+
+            const peakPos = new Vec3(
+                start.x + dirX * randomRange(minTravelX, maxTravelX),
+                start.y + randomRange(minTravelY, maxTravelY),
                 0
             );
 
-            const duration = randomRange(this.minDuration, this.maxDuration);
+            const endPos = new Vec3(
+                peakPos.x + randomRange(-this.fallRandomX, this.fallRandomX),
+                peakPos.y - randomRange(minFallY, maxFallY),
+                0
+            );
+
+            const upDuration = randomRange(this.minDuration, this.maxDuration);
+            const fallDuration = upDuration * 0.8;
             const rotation = dirX * randomRange(this.minRotation, this.maxRotation);
+
+            Tween.stopAllByTarget(piece);
 
             tween(piece)
                 .parallel(
-                    tween().to(duration, { position: endPos }, { easing: 'quadOut' }),
-                    tween().by(duration, { angle: rotation })
+                    tween().to(upDuration, { position: peakPos }, { easing: 'quadOut' }),
+                    tween().by(upDuration, { angle: rotation })
                 )
                 .call(() => {
                     tween(piece)
-                        .to(duration * 0.8, {
-                            position: new Vec3(
-                                endPos.x + randomRange(-80, 80),
-                                endPos.y - randomRange(500, 800),
-                                0
-                            ),
-                            scale: new Vec3(scale * 0.85, scale * 0.85, 1)
-                        }, { easing: 'quadIn' })
+                        .parallel(
+                            tween().to(fallDuration, {
+                                position: endPos,
+                                scale: new Vec3(scale * 0.85, scale * 0.85, 1)
+                            }, { easing: 'quadIn' }),
+                            tween().by(fallDuration, { angle: rotation * 0.65 })
+                        )
                         .call(() => {
                             piece.destroy();
                         })
@@ -143,5 +197,27 @@ export class ConfettiController extends Component {
                 })
                 .start();
         }
+    }
+
+    private getLayerSize(): Vec3 {
+        const uiTransform = this.layerTransform || this.getComponent(UITransform);
+
+        if (!uiTransform) {
+            return new Vec3(720, 1280, 0);
+        }
+
+        return new Vec3(uiTransform.width, uiTransform.height, 0);
+    }
+
+    private getLocalPositionInLayer(target: Node): Vec3 {
+        const uiTransform = this.layerTransform || this.getComponent(UITransform);
+
+        if (!uiTransform) {
+            return target.position.clone();
+        }
+
+        const local = new Vec3();
+        uiTransform.convertToNodeSpaceAR(target.worldPosition, local);
+        return local;
     }
 }
